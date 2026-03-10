@@ -1,0 +1,9 @@
+node_modules
+.next
+dist
+coverage
+.pnpm-store
+npm-debug.log
+pnpm-debug.log
+.git
+.DS_Store

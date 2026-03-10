@@ -1,0 +1,4 @@
+time,project,language,duration_seconds
+2026-03-06T14:00:00Z,Quantified Self,TypeScript,5400
+2026-03-07T16:30:00Z,Warehouse ETL,SQL,3600
+2026-03-08T09:00:00Z,Notebook Cleanup,Python,2700

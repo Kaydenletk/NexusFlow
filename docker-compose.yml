@@ -1,0 +1,57 @@
+services:
+  db:
+    image: timescale/timescaledb:2.25.1-pg17
+    container_name: quantified-self-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: quantified_self
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d quantified_self"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: quantified-self-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      APP_TIMEZONE: America/New_York
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/quantified_self
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    command: sh -c "pnpm db:migrate && pnpm --filter @quantified-self/api start"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: quantified-self-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+      INTERNAL_API_BASE_URL: http://api:3001
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    command: sh -c "pnpm --filter @quantified-self/web start"
+
+volumes:
+  timescaledb-data:
