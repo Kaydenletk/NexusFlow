@@ -8,6 +8,7 @@ describe("Navigation", () => {
   it("renders phase 1 route links", () => {
     render(<Navigation />);
 
+    expect(screen.getByRole("link", { name: "Focus" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Integrations" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Goals" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Overview" })).toBeTruthy();

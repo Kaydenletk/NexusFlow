@@ -1,34 +1,33 @@
 {
-  "name": "@quantified-self/web",
+  "name": "@quantified-self/extension",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "next build --webpack",
-    "dev": "next dev --webpack --port 3000",
-    "start": "next start --port 3000",
+    "build": "vite build",
+    "dev": "vite",
     "test": "vitest run"
   },
   "dependencies": {
-    "@quantified-self/contracts": "workspace:*",
     "@quantified-self/focus-core": "workspace:*",
-    "@tremor/react": "3.18.7",
-    "clsx": "2.1.1",
     "dexie": "4.3.0",
-    "next": "16.1.6",
     "react": "18.2.0",
     "react-dom": "18.2.0"
   },
   "devDependencies": {
+    "@crxjs/vite-plugin": "2.3.0",
     "@testing-library/jest-dom": "6.8.0",
     "@testing-library/react": "16.3.0",
+    "@types/chrome": "0.1.37",
     "@types/react": "18.3.23",
     "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "6.0.0",
     "autoprefixer": "10.4.21",
-    "fake-indexeddb": "6.2.5",
     "jsdom": "26.1.0",
     "postcss": "8.5.6",
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
+    "vite": "8.0.0",
     "vitest": "3.2.4"
   }
 }

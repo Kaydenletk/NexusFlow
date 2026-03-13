@@ -10,6 +10,7 @@
     "build": "pnpm -r build",
     "dev": "concurrently -n api,web -c blue,green \"pnpm --filter @quantified-self/api dev\" \"pnpm --filter @quantified-self/web dev\"",
     "dev:api": "pnpm --filter @quantified-self/api dev",
+    "dev:extension": "pnpm --filter @quantified-self/extension dev",
     "dev:web": "pnpm --filter @quantified-self/web dev",
     "test": "pnpm -r test",
     "db:migrate": "pnpm --filter @quantified-self/db migrate",
