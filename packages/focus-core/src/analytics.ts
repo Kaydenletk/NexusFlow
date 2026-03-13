@@ -1,23 +1,44 @@
+import {
+  addDays as addCalendarDays,
+  format,
+  parseISO,
+  startOfDay,
+} from "date-fns";
 import type {
   BurnoutAssessment,
   BurnoutSignal,
+  CanvasCourseDailyPoint,
+  CanvasCourseInterruption,
+  CanvasCourseReport,
+  CanvasCourseReportItem,
   CategorySummary,
   CategoryTransition,
+  DailyMetrics,
   DailyFocusMetrics,
   DeepWorkBlock,
   FocusSession,
+  FocusSnapshotV1,
   FragmentationResult,
   HostSummary,
-} from "./schema.js";
-import { focusSnapshotSchema } from "./schema.js";
+} from "./types.js";
+import { canvasCourseReportSchema, focusSnapshotSchema } from "./schema.js";
+import { extractCanvasCourseId, isCanvasHostname } from "./url.js";
 
 const DEEP_WORK_MIN_SECONDS = 25 * 60;
 const DEEP_WORK_GAP_MS = 60 * 1000;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MICROTASK_DURATION_SECONDS = 60;
+const MICROTASK_BURST_WINDOW_MS = 4 * 60 * 60 * 1000;
+const MICROTASK_BURST_THRESHOLD = 20;
+const DEFAULT_CANVAS_FAST_SWITCH_THRESHOLD_SECONDS = 30;
 
 type DayBounds = {
   start: Date;
   end: Date;
+};
+
+type ContextSwitchAnalysis = {
+  taxScore: number;
+  microTaskingSwitchTimestamps: number[];
 };
 
 function round(value: number) {
@@ -25,31 +46,38 @@ function round(value: number) {
 }
 
 function toDate(value: string) {
-  return new Date(value);
+  return parseISO(value);
+}
+
+function sortSessionsChronologically(sessions: FocusSession[]) {
+  return [...sessions].sort((left, right) => {
+    if (left.startTime !== right.startTime) {
+      return left.startTime.localeCompare(right.startTime);
+    }
+
+    if (left.endTime !== right.endTime) {
+      return left.endTime.localeCompare(right.endTime);
+    }
+
+    return (left.id ?? "").localeCompare(right.id ?? "");
+  });
 }
 
 export function formatLocalDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return format(date, "yyyy-MM-dd");
 }
 
 function getDayBounds(date: string): DayBounds {
-  const start = new Date(`${date}T00:00:00`);
+  const start = startOfDay(new Date(`${date}T00:00:00`));
 
   return {
     start,
-    end: new Date(start.getTime() + MS_PER_DAY),
+    end: addCalendarDays(start, 1),
   };
 }
 
 function addDays(date: string, offset: number) {
-  const start = new Date(`${date}T00:00:00`);
-  start.setDate(start.getDate() + offset);
-
-  return formatLocalDate(start);
+  return formatLocalDate(addCalendarDays(new Date(`${date}T00:00:00`), offset));
 }
 
 function clipSession(
@@ -80,14 +108,11 @@ function clipSession(
 function getSessionsForDateInternal(sessions: FocusSession[], date: string) {
   const bounds = getDayBounds(date);
 
-  return sessions
-    .map((session) => clipSession(session, bounds))
-    .filter((session): session is FocusSession => session !== null)
-    .sort((left, right) =>
-      left.startTime === right.startTime
-        ? left.endTime.localeCompare(right.endTime)
-        : left.startTime.localeCompare(right.startTime),
-    );
+  return sortSessionsChronologically(
+    sessions
+      .map((session) => clipSession(session, bounds))
+      .filter((session): session is FocusSession => session !== null),
+  );
 }
 
 function sumDurationSeconds(sessions: FocusSession[]) {
@@ -118,6 +143,91 @@ function isDecreaseByThreshold(current: number, previous: number, threshold: num
   return current <= previous * (1 - threshold);
 }
 
+function getComparableRootPath(path: string) {
+  const segments = path.split("/").filter(Boolean).slice(0, 2);
+
+  if (segments.length === 0) {
+    return "/";
+  }
+
+  return `/${segments.join("/")}`;
+}
+
+function getCanvasCourseKey(session: FocusSession) {
+  if (!isCanvasHostname(session.hostname)) {
+    return null;
+  }
+
+  return extractCanvasCourseId(session.path);
+}
+
+function isContextSwitch(previous: FocusSession, current: FocusSession) {
+  return (
+    previous.hostname !== current.hostname ||
+    getComparableRootPath(previous.path) !== getComparableRootPath(current.path)
+  );
+}
+
+function analyzeContextSwitches(
+  sessions: FocusSession[],
+): ContextSwitchAnalysis {
+  const sortedSessions = sortSessionsChronologically(sessions);
+  const microTaskingSwitchTimestamps: number[] = [];
+  let taxScore = 0;
+
+  for (let index = 1; index < sortedSessions.length; index += 1) {
+    const previous = sortedSessions[index - 1];
+    const current = sortedSessions[index];
+
+    if (!previous || !current || !isContextSwitch(previous, current)) {
+      continue;
+    }
+
+    taxScore += 1;
+
+    if (previous.durationSeconds < MICROTASK_DURATION_SECONDS) {
+      taxScore += 2;
+      microTaskingSwitchTimestamps.push(toDate(current.startTime).getTime());
+    }
+
+    if (
+      previous.intent === "productive" &&
+      current.intent === "distracting"
+    ) {
+      taxScore += 3;
+    }
+  }
+
+  return {
+    taxScore,
+    microTaskingSwitchTimestamps,
+  };
+}
+
+function hasMicroTaskingBurst(timestamps: number[]) {
+  let windowStartIndex = 0;
+
+  for (let index = 0; index < timestamps.length; index += 1) {
+    const currentTimestamp = timestamps[index];
+
+    if (typeof currentTimestamp !== "number") {
+      continue;
+    }
+
+    while (
+      currentTimestamp - timestamps[windowStartIndex]! > MICROTASK_BURST_WINDOW_MS
+    ) {
+      windowStartIndex += 1;
+    }
+
+    if (index - windowStartIndex + 1 > MICROTASK_BURST_THRESHOLD) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function createFocusSnapshot(
   sessions: FocusSession[],
   options?: {
@@ -136,9 +246,18 @@ export function createFocusSnapshot(
 
 export function calculateFragmentation(
   sessions: FocusSession[],
+  date: Date,
+): number;
+export function calculateFragmentation(
+  sessions: FocusSession[],
   date: string,
-): FragmentationResult {
-  const daySessions = getSessionsForDateInternal(sessions, date);
+): FragmentationResult;
+export function calculateFragmentation(
+  sessions: FocusSession[],
+  date: Date | string,
+): number | FragmentationResult {
+  const targetDate = typeof date === "string" ? date : formatLocalDate(date);
+  const daySessions = getSessionsForDateInternal(sessions, targetDate);
   const hourly = Array.from({ length: 24 }, (_, hour) => ({
     hour: `${String(hour).padStart(2, "0")}:00`,
     switches: 0,
@@ -181,9 +300,8 @@ export function calculateFragmentation(
   }
 
   const activeHours = sumDurationSeconds(daySessions) / 3600;
-
-  return {
-    date,
+  const result = {
+    date: targetDate,
     totalSwitches,
     activeHours: round(activeHours),
     fragmentationScore:
@@ -196,14 +314,29 @@ export function calculateFragmentation(
 
       return `${left.from}-${left.to}`.localeCompare(`${right.from}-${right.to}`);
     }),
-  };
+  } satisfies FragmentationResult;
+
+  return date instanceof Date ? result.fragmentationScore : result;
+}
+
+export function calculateContextSwitchTax(sessions: FocusSession[]): number {
+  return analyzeContextSwitches(sessions).taxScore;
 }
 
 export function getDeepWorkBlocks(
   sessions: FocusSession[],
+  date: Date,
+): DeepWorkBlock[];
+export function getDeepWorkBlocks(
+  sessions: FocusSession[],
   date: string,
+): DeepWorkBlock[];
+export function getDeepWorkBlocks(
+  sessions: FocusSession[],
+  date: Date | string,
 ): DeepWorkBlock[] {
-  const productiveSessions = getSessionsForDateInternal(sessions, date).filter(
+  const targetDate = typeof date === "string" ? date : formatLocalDate(date);
+  const productiveSessions = getSessionsForDateInternal(sessions, targetDate).filter(
     (session) => session.intent === "productive",
   );
 
@@ -313,9 +446,7 @@ export function getDailyFocusMetrics(
     return [];
   }
 
-  const sortedSessions = [...sessions].sort((left, right) =>
-    left.startTime.localeCompare(right.startTime),
-  );
+  const sortedSessions = sortSessionsChronologically(sessions);
   const startDate =
     options?.startDate ??
     formatLocalDate(toDate(sortedSessions[0]?.startTime ?? new Date().toISOString()));
@@ -333,18 +464,83 @@ export function getDailyFocusMetrics(
   return metrics;
 }
 
+export function getEarlyBurnoutWarning(
+  sessions: FocusSession[],
+): BurnoutAssessment {
+  const { taxScore, microTaskingSwitchTimestamps } = analyzeContextSwitches(sessions);
+  const totalDurationSeconds = sumDurationSeconds(sessions);
+  const productiveDurationSeconds = sumDurationSeconds(
+    sessions.filter((session) => session.intent === "productive"),
+  );
+  const totalActiveHours = totalDurationSeconds / 3600;
+  const productiveRatio =
+    totalDurationSeconds === 0 ? 0 : productiveDurationSeconds / totalDurationSeconds;
+  const taxPerHour = totalActiveHours === 0 ? 0 : taxScore / totalActiveHours;
+  const criticalBurst = hasMicroTaskingBurst(microTaskingSwitchTimestamps);
+
+  if (taxPerHour > 30 || criticalBurst) {
+    return {
+      level: "Critical",
+      warmingUp: false,
+      message:
+        "Severe Context Switching Tax. Brain is fragmented. Take a 15-minute screen break immediately.",
+      signals: [],
+      triggeredSignalKeys: [],
+      currentWindow: null,
+      previousWindow: null,
+    };
+  }
+
+  if (taxPerHour >= 15 && taxPerHour <= 30) {
+    return {
+      level: "Warning",
+      warmingUp: false,
+      message:
+        "High context switching detected. Cognitive tax is accumulating.",
+      signals: [],
+      triggeredSignalKeys: [],
+      currentWindow: null,
+      previousWindow: null,
+    };
+  }
+
+  if (taxPerHour < 15 && productiveRatio > 0.5) {
+    return {
+      level: "Safe",
+      warmingUp: false,
+      message: "Good focus rhythm.",
+      signals: [],
+      triggeredSignalKeys: [],
+      currentWindow: null,
+      previousWindow: null,
+    };
+  }
+
+  return {
+    level: "Warning",
+    warmingUp: false,
+    message: "Focus quality is too weak to stay in the safe zone.",
+    signals: [],
+    triggeredSignalKeys: [],
+    currentWindow: null,
+    previousWindow: null,
+  };
+}
+
 export function getBurnoutAssessment(
-  dailyMetrics: DailyFocusMetrics[],
+  dailyMetrics: DailyMetrics[],
 ): BurnoutAssessment {
   if (dailyMetrics.length < 6) {
     return {
-      level: "warming_up",
+      level: "Safe",
+      warmingUp: true,
       message: "Collect at least six days of browsing data before burnout checks begin.",
       signals: [
         { key: "active_time", triggered: false, previous: 0, current: 0 },
         { key: "deep_work", triggered: false, previous: 0, current: 0 },
         { key: "fragmentation", triggered: false, previous: 0, current: 0 },
       ],
+      triggeredSignalKeys: [],
       currentWindow: null,
       previousWindow: null,
     };
@@ -356,13 +552,15 @@ export function getBurnoutAssessment(
 
   if (previousWindow.length < 3 || currentWindow.length < 3) {
     return {
-      level: "warming_up",
+      level: "Safe",
+      warmingUp: true,
       message: "Collect at least six days of browsing data before burnout checks begin.",
       signals: [
         { key: "active_time", triggered: false, previous: 0, current: 0 },
         { key: "deep_work", triggered: false, previous: 0, current: 0 },
         { key: "fragmentation", triggered: false, previous: 0, current: 0 },
       ],
+      triggeredSignalKeys: [],
       currentWindow: null,
       previousWindow: null,
     };
@@ -427,14 +625,16 @@ export function getBurnoutAssessment(
     },
   ];
   const triggeredCount = signals.filter((signal) => signal.triggered).length;
+  const level =
+    triggeredCount >= 3
+      ? "Critical"
+      : triggeredCount >= 2
+        ? "Warning"
+        : "Safe";
 
   return {
-    level:
-      triggeredCount >= 3
-        ? "critical"
-        : triggeredCount >= 2
-          ? "warning"
-          : "safe",
+    level,
+    warmingUp: false,
     message:
       triggeredCount >= 3
         ? "Active time is climbing while deep work collapses and fragmentation spikes."
@@ -442,6 +642,9 @@ export function getBurnoutAssessment(
           ? "Context switching is trending up and your focus quality is slipping."
           : "Recent browsing patterns are stable enough to stay in the safe zone.",
     signals,
+    triggeredSignalKeys: signals
+      .filter((signal) => signal.triggered)
+      .map((signal) => signal.key),
     currentWindow: currentSummary,
     previousWindow: previousSummary,
   };
@@ -484,4 +687,196 @@ export function getTopHosts(sessions: FocusSession[], limit = 6): HostSummary[] 
     }))
     .sort((left, right) => right.durationMinutes - left.durationMinutes)
     .slice(0, limit);
+}
+
+export function getCanvasCourseReport(
+  snapshot: FocusSnapshotV1,
+  options?: {
+    fastSwitchThresholdSeconds?: number;
+  },
+): CanvasCourseReport {
+  const fastSwitchThresholdSeconds =
+    options?.fastSwitchThresholdSeconds ?? DEFAULT_CANVAS_FAST_SWITCH_THRESHOLD_SECONDS;
+  const sortedSessions = sortSessionsChronologically(snapshot.sessions);
+  const courseMap = new Map<
+    string,
+    {
+      totalSeconds: number;
+      sessionCount: number;
+      switchOutCount: number;
+      distractingSwitchCount: number;
+      fastSwitchCount: number;
+      returnToCourseCount: number;
+      daily: Map<string, CanvasCourseDailyPoint>;
+      distractionHosts: Map<string, number>;
+      interruptions: CanvasCourseInterruption[];
+    }
+  >();
+
+  function ensureCourse(courseId: string) {
+    const existing = courseMap.get(courseId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const created = {
+      totalSeconds: 0,
+      sessionCount: 0,
+      switchOutCount: 0,
+      distractingSwitchCount: 0,
+      fastSwitchCount: 0,
+      returnToCourseCount: 0,
+      daily: new Map<string, CanvasCourseDailyPoint>(),
+      distractionHosts: new Map<string, number>(),
+      interruptions: [] as CanvasCourseInterruption[],
+    };
+
+    courseMap.set(courseId, created);
+    return created;
+  }
+
+  for (let index = 0; index < sortedSessions.length; index += 1) {
+    const session = sortedSessions[index];
+
+    if (!session) {
+      continue;
+    }
+
+    const courseId = getCanvasCourseKey(session);
+
+    if (!courseId) {
+      continue;
+    }
+
+    const course = ensureCourse(courseId);
+    const date = formatLocalDate(toDate(session.startTime));
+    const daily = course.daily.get(date) ?? {
+      date,
+      durationMinutes: 0,
+      sessionCount: 0,
+      switchOutCount: 0,
+      distractingSwitchCount: 0,
+    };
+
+    course.totalSeconds += session.durationSeconds;
+    course.sessionCount += 1;
+    daily.durationMinutes = round(daily.durationMinutes + session.durationSeconds / 60);
+    daily.sessionCount += 1;
+    course.daily.set(date, daily);
+
+    const nextSession = sortedSessions[index + 1];
+
+    if (!nextSession) {
+      continue;
+    }
+
+    const nextCourseId = getCanvasCourseKey(nextSession);
+
+    if (nextCourseId === courseId) {
+      continue;
+    }
+
+    course.switchOutCount += 1;
+    daily.switchOutCount += 1;
+
+    if (nextSession.intent === "distracting") {
+      course.distractingSwitchCount += 1;
+      daily.distractingSwitchCount += 1;
+      course.distractionHosts.set(
+        nextSession.hostname,
+        (course.distractionHosts.get(nextSession.hostname) ?? 0) +
+          nextSession.durationSeconds / 60,
+      );
+    }
+
+    let returnAt: string | null = null;
+
+    for (let cursor = index + 1; cursor < sortedSessions.length; cursor += 1) {
+      const candidate = sortedSessions[cursor];
+
+      if (!candidate) {
+        continue;
+      }
+
+      if (getCanvasCourseKey(candidate) === courseId) {
+        returnAt = candidate.startTime;
+        course.returnToCourseCount += 1;
+        break;
+      }
+    }
+
+    const interruptionDurationSeconds = Math.max(
+      0,
+      Math.round(
+        ((returnAt
+          ? toDate(returnAt).getTime()
+          : toDate(nextSession.endTime).getTime()) -
+          toDate(nextSession.startTime).getTime()) /
+          1000,
+      ),
+    );
+    const fastSwitch =
+      returnAt !== null &&
+      interruptionDurationSeconds <= fastSwitchThresholdSeconds;
+
+    if (fastSwitch) {
+      course.fastSwitchCount += 1;
+    }
+
+    course.interruptions.push({
+      at: nextSession.startTime,
+      hostname: nextSession.hostname,
+      path: nextSession.path,
+      intent: nextSession.intent,
+      durationSeconds: interruptionDurationSeconds,
+      returnedToCourse: returnAt !== null,
+      returnAt,
+      fastSwitch,
+    });
+  }
+
+  const courses: CanvasCourseReportItem[] = Array.from(courseMap.entries())
+    .map(([courseId, course]) => ({
+      courseId,
+      totalMinutes: round(course.totalSeconds / 60),
+      sessionCount: course.sessionCount,
+      switchOutCount: course.switchOutCount,
+      distractingSwitchCount: course.distractingSwitchCount,
+      fastSwitchCount: course.fastSwitchCount,
+      returnToCourseCount: course.returnToCourseCount,
+      returnRate:
+        course.switchOutCount === 0
+          ? 0
+          : round(course.returnToCourseCount / course.switchOutCount),
+      daily: Array.from(course.daily.values()).sort((left, right) =>
+        left.date.localeCompare(right.date),
+      ),
+      topDistractionHosts: Array.from(course.distractionHosts.entries())
+        .map(([hostname, durationMinutes]) => ({
+          hostname,
+          durationMinutes: round(durationMinutes),
+        }))
+        .sort((left, right) => right.durationMinutes - left.durationMinutes)
+        .slice(0, 5),
+      interruptions: course.interruptions.sort((left, right) =>
+        left.at.localeCompare(right.at),
+      ),
+    }))
+    .sort((left, right) => {
+      if (right.totalMinutes !== left.totalMinutes) {
+        return right.totalMinutes - left.totalMinutes;
+      }
+
+      return left.courseId.localeCompare(right.courseId);
+    });
+
+  return canvasCourseReportSchema.parse({
+    fastSwitchThresholdSeconds,
+    totalCanvasMinutes: round(
+      courses.reduce((total, course) => total + course.totalMinutes, 0),
+    ),
+    totalCourseCount: courses.length,
+    courses,
+  });
 }

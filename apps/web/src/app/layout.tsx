@@ -20,7 +20,10 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "NexusFlow",
   description:
-    "Student Life Intelligence Dashboard for rhythm, progress, and personal activity signals.",
+    "Local-first focus intelligence dashboard for burnout, deep work, and context switching.",
+  icons: {
+    icon: "/nexusflow-mark.svg",
+  },
 };
 
 export default function RootLayout({
@@ -33,25 +36,21 @@ export default function RootLayout({
       <body
         className={`${manrope.variable} ${ibmPlexMono.variable} font-sans antialiased`}
       >
-        <div className="mx-auto min-h-screen max-w-7xl px-6 py-10">
-          <header className="rounded-[2rem] border border-white/70 bg-white/70 p-6 shadow-panel backdrop-blur">
-            <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-2xl">
-                <p className="font-mono text-xs uppercase tracking-[0.35em] text-slate-500">
-                  NexusFlow
-                </p>
-                <h1 className="mt-4 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-                  Student life signals, shaped into a readable rhythm.
-                </h1>
-                <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
-                  Start with coding activity as the first validated daily signal,
-                  then grow toward a broader view of work, learning, and digital behavior.
-                </p>
-              </div>
-              <Navigation />
+        <div className="mx-auto min-h-screen max-w-7xl px-6 py-8">
+          <header className="flex items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              <img
+                src="/nexusflow-mark.svg"
+                alt="NexusFlow logo"
+                className="h-9 w-9 rounded-xl shadow-sm"
+              />
+              <span className="text-lg font-semibold tracking-tight text-ink">
+                NexusFlow
+              </span>
             </div>
+            <Navigation />
           </header>
-          <main className="mt-8 space-y-8">{children}</main>
+          <main className="mt-8 space-y-6">{children}</main>
         </div>
       </body>
     </html>

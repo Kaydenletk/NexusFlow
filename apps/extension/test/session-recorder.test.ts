@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { focusSnapshotSchema, type FocusSession } from "@quantified-self/focus-core";
+import { focusSnapshotSchema, type FocusSession } from "@nexusflow/focus-core";
 
 import { buildFocusSnapshot } from "../src/lib/snapshot.js";
 import {
@@ -15,6 +15,10 @@ function createSettings(): FocusSettings {
     notificationsEnabled: true,
     exportVersion: 1,
     timezone: "America/New_York",
+    syncEnabled: true,
+    apiBaseUrl: "http://localhost:3001",
+    lastChromeSyncAt: null,
+    lastChromeSyncError: null,
     lastBurnoutLevel: null,
     lastNotificationDate: null,
   };

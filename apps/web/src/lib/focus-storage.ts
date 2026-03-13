@@ -4,7 +4,7 @@ import Dexie, { type Table } from "dexie";
 import {
   focusSnapshotSchema,
   type FocusSnapshotV1,
-} from "@quantified-self/focus-core";
+} from "@nexusflow/focus-core";
 
 type StoredFocusSnapshot = {
   id: "latest";

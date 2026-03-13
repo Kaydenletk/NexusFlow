@@ -11,7 +11,7 @@ import { FocusDashboard } from "./focus-dashboard";
 import { clearStoredFocusSnapshot } from "../lib/focus-storage";
 
 vi.mock("@tremor/react", () => ({
-  Card: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  AreaChart: ({ data }: { data: unknown }) => <pre>{JSON.stringify(data)}</pre>,
   BarChart: ({ data }: { data: unknown }) => <pre>{JSON.stringify(data)}</pre>,
   LineChart: ({ data }: { data: unknown }) => <pre>{JSON.stringify(data)}</pre>,
   BarList: ({
@@ -79,7 +79,10 @@ describe("FocusDashboard", () => {
   it("renders the empty state before import", async () => {
     render(<FocusDashboard />);
 
-    expect(await screen.findByText("No focus snapshot yet")).toBeTruthy();
+    expect(
+      await screen.findByText(/Drop snapshot JSON|Replace snapshot/),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Upload snapshot")).toBeTruthy();
   });
 
   it("imports a valid snapshot and renders summaries", async () => {
@@ -95,8 +98,10 @@ describe("FocusDashboard", () => {
     });
 
     expect(await screen.findByText("Snapshot imported.")).toBeTruthy();
-    expect(await screen.findByText("Latest deep work")).toBeTruthy();
-    expect(screen.getByText("Top domains")).toBeTruthy();
+    expect(await screen.findByText("Burnout Trajectory")).toBeTruthy();
+    expect(screen.getByText("Context Switching")).toBeTruthy();
+    expect(screen.getByText("Transition Heatmap")).toBeTruthy();
+    expect(screen.getByText("Top Domains")).toBeTruthy();
     expect(screen.getByText(/github.com:/)).toBeTruthy();
   });
 
@@ -133,7 +138,7 @@ describe("FocusDashboard", () => {
 
     render(<FocusDashboard />);
 
-    expect(await screen.findByText("Latest active time")).toBeTruthy();
-    expect(screen.getByText("Clear stored snapshot")).toBeTruthy();
+    expect(await screen.findByText("Burnout Trajectory")).toBeTruthy();
+    expect(screen.getByText("Clear snapshot")).toBeTruthy();
   });
 });

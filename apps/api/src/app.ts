@@ -4,6 +4,7 @@ import Fastify from "fastify";
 
 import { env } from "./env.js";
 import { analyticsRoutes } from "./routes/analytics.js";
+import { chromeRoutes } from "./routes/chrome.js";
 import { goalsRoutes } from "./routes/goals.js";
 import { integrationsRoutes } from "./routes/integrations.js";
 import { importsRoutes } from "./routes/imports.js";
@@ -27,6 +28,7 @@ export async function createApp() {
   await app.register(errorHandlerPlugin);
   await app.register(importsRoutes);
   await app.register(analyticsRoutes);
+  await app.register(chromeRoutes);
   await app.register(integrationsRoutes);
   await app.register(goalsRoutes);
   await app.register(visualizationsRoutes);

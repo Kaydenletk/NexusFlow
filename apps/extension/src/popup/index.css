@@ -8,10 +8,9 @@
 
 body {
   margin: 0;
-  min-width: 360px;
-  background:
-    radial-gradient(circle at top left, rgba(212, 160, 23, 0.14), transparent 38%),
-    linear-gradient(180deg, #fcfbf7 0%, #f3f6f9 100%);
+  min-width: 380px;
+  max-width: 420px;
+  background: #ffffff;
   color: #0f172a;
   font-family:
     ui-sans-serif,
@@ -20,8 +19,4 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-}
-
-* {
-  box-sizing: border-box;
 }

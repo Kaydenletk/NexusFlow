@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "build:watch": "vite build --watch",
     "dev": "vite",
     "test": "vitest run"
   },
   "dependencies": {
-    "@quantified-self/focus-core": "workspace:*",
+    "@nexusflow/focus-core": "workspace:*",
+    "@quantified-self/contracts": "workspace:*",
     "dexie": "4.3.0",
     "react": "18.2.0",
     "react-dom": "18.2.0"

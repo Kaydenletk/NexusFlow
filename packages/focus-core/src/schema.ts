@@ -18,23 +18,26 @@ export const focusIntentValues = [
   "distracting",
 ] as const;
 
-export const burnoutLevelValues = [
-  "warming_up",
-  "safe",
-  "warning",
-  "critical",
-] as const;
+export const burnoutLevelValues = ["Safe", "Warning", "Critical"] as const;
 
 export const burnoutSignalKeyValues = [
   "active_time",
   "deep_work",
   "fragmentation",
 ] as const;
+export const focusEventReasonValues = [
+  "activated",
+  "updated",
+  "window_blur",
+  "removed",
+  "heartbeat",
+] as const;
 
 export const focusCategorySchema = z.enum(focusCategoryValues);
 export const focusIntentSchema = z.enum(focusIntentValues);
 export const burnoutLevelSchema = z.enum(burnoutLevelValues);
 export const burnoutSignalKeySchema = z.enum(burnoutSignalKeyValues);
+export const focusEventReasonSchema = z.enum(focusEventReasonValues);
 
 export const timestampStringSchema = z
   .string()
@@ -58,8 +61,13 @@ export const focusSessionSchema = z.object({
   origin: z.string().min(1),
   path: z.string().min(1),
   hostname: z.string().min(1),
+  documentTitle: z.string().min(1).nullable().optional(),
+  tabId: z.number().int().nullable().optional(),
+  windowId: z.number().int().nullable().optional(),
   category: focusCategorySchema,
   intent: focusIntentSchema,
+  eventReason: focusEventReasonSchema.optional(),
+  isPathMasked: z.boolean().optional(),
   startTime: timestampStringSchema,
   endTime: timestampStringSchema,
   durationSeconds: z.number().int().nonnegative(),
@@ -109,6 +117,8 @@ export const dailyFocusMetricsSchema = z.object({
   categorySwitches: z.number().int().nonnegative(),
 });
 
+export const dailyMetricsSchema = dailyFocusMetricsSchema;
+
 export const burnoutSignalSchema = z.object({
   key: burnoutSignalKeySchema,
   triggered: z.boolean(),
@@ -128,8 +138,10 @@ export const burnoutWindowSummarySchema = z.object({
 
 export const burnoutAssessmentSchema = z.object({
   level: burnoutLevelSchema,
+  warmingUp: z.boolean().default(false),
   message: z.string(),
   signals: z.array(burnoutSignalSchema),
+  triggeredSignalKeys: z.array(burnoutSignalKeySchema).default([]),
   currentWindow: burnoutWindowSummarySchema.nullable(),
   previousWindow: burnoutWindowSummarySchema.nullable(),
 });
@@ -144,19 +156,42 @@ export const hostSummarySchema = z.object({
   durationMinutes: z.number().nonnegative(),
 });
 
-export type FocusCategory = z.infer<typeof focusCategorySchema>;
-export type FocusIntent = z.infer<typeof focusIntentSchema>;
-export type BurnoutLevel = z.infer<typeof burnoutLevelSchema>;
-export type BurnoutSignalKey = z.infer<typeof burnoutSignalKeySchema>;
-export type NormalizedUrl = z.infer<typeof normalizedUrlSchema>;
-export type FocusSession = z.infer<typeof focusSessionSchema>;
-export type FocusSnapshotV1 = z.infer<typeof focusSnapshotSchema>;
-export type FragmentationHourlyPoint = z.infer<typeof fragmentationHourlyPointSchema>;
-export type CategoryTransition = z.infer<typeof categoryTransitionSchema>;
-export type FragmentationResult = z.infer<typeof fragmentationResultSchema>;
-export type DeepWorkBlock = z.infer<typeof deepWorkBlockSchema>;
-export type DailyFocusMetrics = z.infer<typeof dailyFocusMetricsSchema>;
-export type BurnoutSignal = z.infer<typeof burnoutSignalSchema>;
-export type BurnoutAssessment = z.infer<typeof burnoutAssessmentSchema>;
-export type CategorySummary = z.infer<typeof categorySummarySchema>;
-export type HostSummary = z.infer<typeof hostSummarySchema>;
+export const canvasCourseDailyPointSchema = z.object({
+  date: localDateSchema,
+  durationMinutes: z.number().nonnegative(),
+  sessionCount: z.number().int().nonnegative(),
+  switchOutCount: z.number().int().nonnegative(),
+  distractingSwitchCount: z.number().int().nonnegative(),
+});
+
+export const canvasCourseInterruptionSchema = z.object({
+  at: timestampStringSchema,
+  hostname: z.string().min(1),
+  path: z.string().min(1),
+  intent: focusIntentSchema,
+  durationSeconds: z.number().int().nonnegative(),
+  returnedToCourse: z.boolean(),
+  returnAt: timestampStringSchema.nullable(),
+  fastSwitch: z.boolean(),
+});
+
+export const canvasCourseReportItemSchema = z.object({
+  courseId: z.string().min(1),
+  totalMinutes: z.number().nonnegative(),
+  sessionCount: z.number().int().nonnegative(),
+  switchOutCount: z.number().int().nonnegative(),
+  distractingSwitchCount: z.number().int().nonnegative(),
+  fastSwitchCount: z.number().int().nonnegative(),
+  returnToCourseCount: z.number().int().nonnegative(),
+  returnRate: z.number().min(0).max(1),
+  daily: z.array(canvasCourseDailyPointSchema),
+  topDistractionHosts: z.array(hostSummarySchema),
+  interruptions: z.array(canvasCourseInterruptionSchema),
+});
+
+export const canvasCourseReportSchema = z.object({
+  fastSwitchThresholdSeconds: z.number().int().positive(),
+  totalCanvasMinutes: z.number().nonnegative(),
+  totalCourseCount: z.number().int().nonnegative(),
+  courses: z.array(canvasCourseReportItemSchema),
+});

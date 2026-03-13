@@ -26,6 +26,9 @@ importers:
       '@fastify/multipart':
         specifier: 9.2.1
         version: 9.2.1
+      '@nexusflow/focus-core':
+        specifier: workspace:*
+        version: link:../../packages/focus-core
       '@quantified-self/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -63,9 +66,12 @@ importers:
 
   apps/extension:
     dependencies:
-      '@quantified-self/focus-core':
+      '@nexusflow/focus-core':
         specifier: workspace:*
         version: link:../../packages/focus-core
+      '@quantified-self/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       dexie:
         specifier: 4.3.0
         version: 4.3.0
@@ -121,12 +127,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@nexusflow/focus-core':
+        specifier: workspace:*
+        version: link:../../packages/focus-core
       '@quantified-self/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@quantified-self/focus-core':
-        specifier: workspace:*
-        version: link:../../packages/focus-core
       '@tremor/react':
         specifier: 3.18.7
         version: 3.18.7(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -214,6 +220,9 @@ importers:
 
   packages/focus-core:
     dependencies:
+      date-fns:
+        specifier: 4.1.0
+        version: 4.1.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -1703,6 +1712,9 @@ packages:
 
   date-fns@3.6.0:
     resolution: {integrity: sha512-fRHTG8g/Gif+kSh50gaGEdToemgfj74aRX3swtiouboip5JDLAyDE9F11nHMIcvOaXeOC6D7SpNhi7uFyB7Uww==}
+
+  date-fns@4.1.0:
+    resolution: {integrity: sha512-Ukq0owbQXxa/U3EGtsdVBkR1w7KOQ5gIBqdH2hkvknzZPYvBxb/aa6E8L7tmjFtkwZBu3UXBbjIgPo/Ez4xaNg==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -4163,6 +4175,8 @@ snapshots:
       whatwg-url: 14.2.0
 
   date-fns@3.6.0: {}
+
+  date-fns@4.1.0: {}
 
   debug@4.4.3:
     dependencies:

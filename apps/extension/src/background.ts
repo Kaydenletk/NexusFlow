@@ -1,11 +1,14 @@
-import type { BurnoutAssessment } from "@quantified-self/focus-core";
+import type { BurnoutAssessment } from "@nexusflow/focus-core";
 
 import {
   getSettings,
+  listUnsyncedSessions,
+  markSessionsSynced,
   listRecentSessions,
   saveSession,
   saveSettings,
 } from "./lib/focus-db.js";
+import { syncChromeSessions } from "./lib/chrome-sync.js";
 import { FocusSessionRecorder, type TrackableTab } from "./lib/session-recorder.js";
 
 const HEARTBEAT_ALARM = "nexusflow-focus-heartbeat";
@@ -22,13 +25,27 @@ const recorder = new FocusSessionRecorder(
     notify: async (assessment: BurnoutAssessment) => {
       await chrome.notifications.create({
         type: "basic",
-        iconUrl: "icon.svg",
+        iconUrl: "icons/icon-128.png",
         title: "High Cognitive Load Detected",
         message:
-          assessment.level === "critical"
+          assessment.level === "Critical"
             ? "Deep work is dropping while fragmentation keeps rising. Step away from the screen."
             : "Context switching is climbing. Take a short break before momentum slips further.",
       });
+    },
+  },
+  {
+    syncPending: async () => {
+      try {
+        await syncChromeSessions({
+          getSettings,
+          saveSettings,
+          listUnsyncedSessions,
+          markSessionsSynced,
+        });
+      } catch {
+        // API offline — silently skip sync
+      }
     },
   },
 );
@@ -49,6 +66,7 @@ async function queryActiveTab(windowId?: number) {
     id: active.id,
     windowId: active.windowId,
     url: active.url ?? active.pendingUrl ?? null,
+    title: active.title ?? null,
   } satisfies TrackableTab;
 }
 
@@ -57,7 +75,17 @@ async function ensureBackgroundReady() {
   await chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 1 });
 
   const activeTab = await queryActiveTab();
-  await recorder.syncActiveTab(activeTab);
+  await recorder.syncActiveTab(activeTab, new Date(), "heartbeat");
+  try {
+    await syncChromeSessions({
+      getSettings,
+      saveSettings,
+      listUnsyncedSessions,
+      markSessionsSynced,
+    });
+  } catch {
+    // API offline — will retry on next heartbeat
+  }
 }
 
 function bootstrap() {
@@ -89,7 +117,8 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
         id: tab.id,
         windowId: tab.windowId ?? windowId,
         url: tab.url ?? tab.pendingUrl ?? null,
-      }),
+        title: tab.title ?? null,
+      }, new Date(), "activated"),
     );
 });
 
@@ -102,7 +131,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     id: tabId,
     windowId: tab.windowId,
     url: changeInfo.url ?? tab.url ?? tab.pendingUrl ?? null,
-  });
+    title: tab.title ?? null,
+  }, new Date(), "updated");
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -115,7 +145,9 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
     return;
   }
 
-  void queryActiveTab(windowId).then((tab) => recorder.syncActiveTab(tab));
+  void queryActiveTab(windowId).then((tab) =>
+    recorder.syncActiveTab(tab, new Date(), "activated"),
+  );
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -123,5 +155,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     return;
   }
 
-  void recorder.heartbeat(() => queryActiveTab());
+  void recorder.heartbeat(() => queryActiveTab(), new Date());
 });

@@ -1,10 +1,15 @@
-import { createFocusSnapshot, focusSnapshotSchema, type FocusSession } from "@quantified-self/focus-core";
+import {
+  createFocusSnapshot,
+  focusSnapshotSchema,
+  type FocusSession,
+  type FocusSnapshotV1,
+} from "@nexusflow/focus-core";
 
 export function buildFocusSnapshot(
   sessions: FocusSession[],
   timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
   exportedAt = new Date().toISOString(),
-) {
+): FocusSnapshotV1 {
   return focusSnapshotSchema.parse(
     createFocusSnapshot(sessions, {
       timezone,
@@ -13,7 +18,7 @@ export function buildFocusSnapshot(
   );
 }
 
-export function downloadSnapshot(snapshot: unknown, filename: string) {
+export function downloadSnapshot(snapshot: FocusSnapshotV1, filename: string) {
   const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
     type: "application/json",
   });

@@ -1,12 +1,12 @@
 import {
+  applyPrivacyPolicy,
   categorizeUrl,
   formatLocalDate,
-  getBurnoutAssessment,
-  getDailyFocusMetrics,
+  getEarlyBurnoutWarning,
   normalizeTrackableUrl,
   type BurnoutAssessment,
   type FocusSession,
-} from "@quantified-self/focus-core";
+} from "@nexusflow/focus-core";
 
 import type { FocusSettings } from "./focus-db.js";
 
@@ -19,8 +19,11 @@ type ActiveSession = {
   origin: string;
   path: string;
   hostname: string;
+  documentTitle: string | null;
   category: FocusSession["category"];
   intent: FocusSession["intent"];
+  eventReason: FocusSession["eventReason"];
+  isPathMasked: boolean;
   startedAt: string;
 };
 
@@ -28,6 +31,7 @@ export type TrackableTab = {
   id?: number;
   windowId?: number | null;
   url?: string | null;
+  title?: string | null;
 };
 
 export type FocusRecorderStore = {
@@ -39,6 +43,10 @@ export type FocusRecorderStore = {
 
 export type FocusNotifier = {
   notify: (assessment: BurnoutAssessment) => Promise<void> | void;
+};
+
+export type FocusSyncer = {
+  syncPending: () => Promise<void>;
 };
 
 function getLookbackStart(now: Date) {
@@ -61,15 +69,24 @@ function createSessionFromActive(active: ActiveSession, endedAt: Date): FocusSes
     origin: active.origin,
     path: active.path,
     hostname: active.hostname,
+    documentTitle: active.documentTitle,
+    tabId: active.tabId,
+    windowId: active.windowId,
     category: active.category,
     intent: active.intent,
+    eventReason: active.eventReason,
+    isPathMasked: active.isPathMasked,
     startTime: active.startedAt,
     endTime: endedAt.toISOString(),
     durationSeconds,
   };
 }
 
-function toActiveSession(tab: TrackableTab, startedAt: Date): ActiveSession | null {
+function toActiveSession(
+  tab: TrackableTab,
+  startedAt: Date,
+  reason: NonNullable<FocusSession["eventReason"]>,
+): ActiveSession | null {
   if (typeof tab.id !== "number" || !tab.url) {
     return null;
   }
@@ -81,13 +98,16 @@ function toActiveSession(tab: TrackableTab, startedAt: Date): ActiveSession | nu
   }
 
   const categorization = categorizeUrl(normalized);
+  const privacy = applyPrivacyPolicy(normalized, categorization.category);
 
   return {
     tabId: tab.id,
     windowId: tab.windowId ?? null,
-    ...normalized,
+    ...privacy,
+    documentTitle: privacy.isPathMasked ? null : tab.title ?? null,
     category: categorization.category,
     intent: categorization.intent,
+    eventReason: reason,
     startedAt: startedAt.toISOString(),
   };
 }
@@ -98,17 +118,22 @@ export class FocusSessionRecorder {
   constructor(
     private readonly store: FocusRecorderStore,
     private readonly notifier: FocusNotifier,
+    private readonly syncer?: FocusSyncer,
   ) {}
 
   getActiveSession() {
     return this.active;
   }
 
-  async syncActiveTab(tab: TrackableTab | null, at = new Date()) {
-    const nextActive = tab ? toActiveSession(tab, at) : null;
+  async syncActiveTab(
+    tab: TrackableTab | null,
+    at = new Date(),
+    reason: NonNullable<FocusSession["eventReason"]> = "heartbeat",
+  ) {
+    const nextActive = tab ? toActiveSession(tab, at, reason) : null;
 
     if (!nextActive) {
-      await this.clearActive(at);
+      await this.clearActive(at, reason);
       return;
     }
 
@@ -121,7 +146,7 @@ export class FocusSessionRecorder {
       return;
     }
 
-    await this.clearActive(at);
+    await this.clearActive(at, reason);
     this.active = nextActive;
   }
 
@@ -130,24 +155,33 @@ export class FocusSessionRecorder {
       return;
     }
 
-    await this.clearActive(at);
+    await this.clearActive(at, "removed");
   }
 
   async handleWindowBlur(at = new Date()) {
-    await this.clearActive(at);
+    await this.clearActive(at, "window_blur");
   }
 
   async heartbeat(resolveActiveTab: () => Promise<TrackableTab | null>, at = new Date()) {
     const tab = await resolveActiveTab();
-    await this.syncActiveTab(tab, at);
+    await this.syncActiveTab(tab, at, "heartbeat");
   }
 
-  private async clearActive(at: Date) {
+  private async clearActive(
+    at: Date,
+    reason: NonNullable<FocusSession["eventReason"]> = "heartbeat",
+  ) {
     if (!this.active) {
       return;
     }
 
-    const finalized = createSessionFromActive(this.active, at);
+    const finalized = createSessionFromActive(
+      {
+        ...this.active,
+        eventReason: reason,
+      },
+      at,
+    );
     this.active = null;
 
     if (!finalized) {
@@ -156,14 +190,14 @@ export class FocusSessionRecorder {
 
     await this.store.saveSession(finalized);
     await this.evaluateBurnout(at);
+    await this.syncer?.syncPending();
   }
 
   private async evaluateBurnout(referenceTime: Date) {
     const recentSessions = await this.store.listRecentSessions(
       getLookbackStart(referenceTime),
     );
-    const metrics = getDailyFocusMetrics(recentSessions);
-    const assessment = getBurnoutAssessment(metrics);
+    const assessment = getEarlyBurnoutWarning(recentSessions);
     const settings = await this.store.getSettings();
     const today = formatLocalDate(referenceTime);
     let nextSettings: FocusSettings = {
@@ -173,7 +207,7 @@ export class FocusSessionRecorder {
 
     if (
       settings.notificationsEnabled &&
-      (assessment.level === "warning" || assessment.level === "critical") &&
+      (assessment.level === "Warning" || assessment.level === "Critical") &&
       settings.lastBurnoutLevel !== assessment.level &&
       settings.lastNotificationDate !== today
     ) {

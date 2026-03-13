@@ -19,6 +19,16 @@ export const syncRunStatusValues = ["running", "completed", "failed"] as const;
 export const rangeValues = ["7d", "30d", "90d"] as const;
 export const bucketValues = ["day", "week"] as const;
 export const goalPeriodValues = ["day", "week"] as const;
+export const chromeRangeValues = ["1d", "7d", "30d"] as const;
+export const chromeEventReasonValues = [
+  "activated",
+  "updated",
+  "window_blur",
+  "removed",
+  "heartbeat",
+] as const;
+export const chromeSyncRunStatusValues = ["completed", "failed"] as const;
+export const chromePrivacyModeValues = ["allow", "mask"] as const;
 export const goalMetricCatalog = {
   coding_activity: ["coding_hours", "coding_sessions"],
   listening_history: ["listening_hours", "track_count"],
@@ -45,6 +55,10 @@ export const rangeSchema = z.enum(rangeValues);
 export const bucketSchema = z.enum(bucketValues);
 export const goalPeriodSchema = z.enum(goalPeriodValues);
 export const goalMetricSchema = z.enum(goalMetricValues);
+export const chromeRangeSchema = z.enum(chromeRangeValues);
+export const chromeEventReasonSchema = z.enum(chromeEventReasonValues);
+export const chromeSyncRunStatusSchema = z.enum(chromeSyncRunStatusValues);
+export const chromePrivacyModeSchema = z.enum(chromePrivacyModeValues);
 
 export const timestampStringSchema = z
   .string()
@@ -133,6 +147,43 @@ export const goalsProgressQuerySchema = z.object({
 
 export const heatmapQuerySchema = z.object({
   range: z.literal("365d").default("365d"),
+});
+
+export const chromeBulkSessionsSchema = z.object({
+  sessions: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        tabId: z.number().int().nullable().optional(),
+        windowId: z.number().int().nullable().optional(),
+        origin: z.string().min(1),
+        path: z.string().min(1),
+        hostname: z.string().min(1),
+        documentTitle: z.string().min(1).nullable().optional(),
+        category: z.string().min(1),
+        intent: z.enum(["productive", "neutral", "distracting"]),
+        eventReason: chromeEventReasonSchema,
+        isPathMasked: z.boolean().default(false),
+        startTime: timestampStringSchema,
+        endTime: timestampStringSchema,
+        durationSeconds: z.number().int().positive(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+export const chromeOverviewQuerySchema = z.object({
+  range: chromeRangeSchema.default("7d"),
+});
+
+export const chromeSessionsQuerySchema = z.object({
+  range: chromeRangeSchema.default("7d"),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+export const chromeTimelineQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
 export const importBatchSchema = z.object({
@@ -367,6 +418,189 @@ export const codingStreaksResponseSchema = z.object({
   lastActiveDate: z.string().nullable(),
 });
 
+export const chromeSyncRunSchema = z.object({
+  id: z.string().uuid(),
+  status: chromeSyncRunStatusSchema,
+  rowsReceived: z.number().int().nonnegative(),
+  rowsInserted: z.number().int().nonnegative(),
+  errorMessage: z.string().nullable(),
+  createdAt: z.string(),
+  finishedAt: z.string().nullable(),
+});
+
+export const chromeBulkIngestResponseSchema = z.object({
+  run: chromeSyncRunSchema,
+  receivedCount: z.number().int().nonnegative(),
+  insertedCount: z.number().int().nonnegative(),
+});
+
+export const chromePrivacyRuleSchema = z.object({
+  id: z.string().uuid(),
+  hostnamePattern: z.string(),
+  maskMode: chromePrivacyModeSchema,
+  enabled: z.boolean(),
+  description: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export const chromeHealthResponseSchema = z.object({
+  status: z.literal("ok"),
+  database: z.literal("ok"),
+  timestamp: z.string(),
+  totalSessions: z.number().int().nonnegative(),
+  lastSyncAt: z.string().nullable(),
+  privacyRuleCount: z.number().int().nonnegative(),
+});
+
+export const chromeActivityPointSchema = z.object({
+  date: z.string(),
+  trackedMinutes: z.number().nonnegative(),
+  productiveMinutes: z.number().nonnegative(),
+  distractingMinutes: z.number().nonnegative(),
+  switchCount: z.number().int().nonnegative(),
+  switchTax: z.number().nonnegative(),
+});
+
+export const chromeOverviewResponseSchema = z.object({
+  range: chromeRangeSchema,
+  metrics: z.object({
+    trackedHours: z.number().nonnegative(),
+    productiveRatio: z.number().min(0).max(1),
+    distractingRatio: z.number().min(0).max(1),
+    switchCount: z.number().int().nonnegative(),
+    switchTax: z.number().nonnegative(),
+    activeDays: z.number().int().nonnegative(),
+    syncedSessionCount: z.number().int().nonnegative(),
+    burnoutLevel: z.enum(["Safe", "Warning", "Critical", "Warming up"]),
+  }),
+  daily: z.array(chromeActivityPointSchema),
+  lastSyncAt: z.string().nullable(),
+});
+
+export const chromeSessionRecordSchema = z.object({
+  id: z.string(),
+  tabId: z.number().int().nullable(),
+  windowId: z.number().int().nullable(),
+  origin: z.string(),
+  path: z.string(),
+  hostname: z.string(),
+  documentTitle: z.string().nullable(),
+  category: z.string(),
+  intent: z.enum(["productive", "neutral", "distracting"]),
+  eventReason: chromeEventReasonSchema,
+  isPathMasked: z.boolean(),
+  startTime: z.string(),
+  endTime: z.string(),
+  durationSeconds: z.number().int().nonnegative(),
+  createdAt: z.string(),
+});
+
+export const chromeSessionsResponseSchema = z.object({
+  range: chromeRangeSchema,
+  items: z.array(chromeSessionRecordSchema),
+});
+
+export const chromeTimelineResponseSchema = z.object({
+  date: z.string(),
+  switchCount: z.number().int().nonnegative(),
+  switchTax: z.number().nonnegative(),
+  focusBlocks: z.array(
+    z.object({
+      startTime: z.string(),
+      endTime: z.string(),
+      durationMinutes: z.number().nonnegative(),
+      categories: z.array(z.string()),
+    }),
+  ),
+  items: z.array(chromeSessionRecordSchema),
+});
+
+export const chromeHostsResponseSchema = z.object({
+  range: chromeRangeSchema,
+  items: z.array(
+    z.object({
+      hostname: z.string(),
+      durationMinutes: z.number().nonnegative(),
+      sessionCount: z.number().int().nonnegative(),
+      distractingMinutes: z.number().nonnegative(),
+      isMostlyMasked: z.boolean(),
+    }),
+  ),
+});
+
+export const chromeCategoriesResponseSchema = z.object({
+  range: chromeRangeSchema,
+  items: z.array(
+    z.object({
+      category: z.string(),
+      durationMinutes: z.number().nonnegative(),
+      sessionCount: z.number().int().nonnegative(),
+    }),
+  ),
+});
+
+export const chromeContextSwitchingResponseSchema = z.object({
+  range: chromeRangeSchema,
+  burnoutLevel: z.enum(["Safe", "Warning", "Critical", "Warming up"]),
+  items: z.array(
+    z.object({
+      date: z.string(),
+      switchCount: z.number().int().nonnegative(),
+      switchTax: z.number().nonnegative(),
+      fragmentationScore: z.number().nonnegative(),
+    }),
+  ),
+});
+
+export const chromeCanvasCourseReportSchema = z.object({
+  fastSwitchThresholdSeconds: z.number().int().positive(),
+  totalCanvasMinutes: z.number().nonnegative(),
+  totalCourseCount: z.number().int().nonnegative(),
+  courses: z.array(
+    z.object({
+      courseId: z.string(),
+      totalMinutes: z.number().nonnegative(),
+      sessionCount: z.number().int().nonnegative(),
+      switchOutCount: z.number().int().nonnegative(),
+      distractingSwitchCount: z.number().int().nonnegative(),
+      fastSwitchCount: z.number().int().nonnegative(),
+      returnToCourseCount: z.number().int().nonnegative(),
+      returnRate: z.number().nonnegative(),
+      daily: z.array(
+        z.object({
+          date: z.string(),
+          durationMinutes: z.number().nonnegative(),
+          sessionCount: z.number().int().nonnegative(),
+          switchOutCount: z.number().int().nonnegative(),
+          distractingSwitchCount: z.number().int().nonnegative(),
+        }),
+      ),
+      topDistractionHosts: z.array(
+        z.object({
+          hostname: z.string(),
+          durationMinutes: z.number().nonnegative(),
+        }),
+      ),
+      interruptions: z.array(
+        z.object({
+          at: z.string(),
+          hostname: z.string(),
+          path: z.string(),
+          intent: z.enum(["productive", "neutral", "distracting"]),
+          durationSeconds: z.number().int().nonnegative(),
+          returnedToCourse: z.boolean(),
+          returnAt: z.string().nullable(),
+          fastSwitch: z.boolean(),
+        }),
+      ),
+    }),
+  ),
+});
+
+export const chromeSyncStatusResponseSchema = z.object({
+  items: z.array(chromeSyncRunSchema),
+});
+
 export const errorEnvelopeSchema = z.object({
   error: z.object({
     code: z.string(),
@@ -384,6 +618,10 @@ export type Range = z.infer<typeof rangeSchema>;
 export type Bucket = z.infer<typeof bucketSchema>;
 export type GoalPeriod = z.infer<typeof goalPeriodSchema>;
 export type GoalMetric = z.infer<typeof goalMetricSchema>;
+export type ChromeRange = z.infer<typeof chromeRangeSchema>;
+export type ChromeEventReason = z.infer<typeof chromeEventReasonSchema>;
+export type ChromeSyncRunStatus = z.infer<typeof chromeSyncRunStatusSchema>;
+export type ChromePrivacyMode = z.infer<typeof chromePrivacyModeSchema>;
 export type CodingActivityManualInput = z.infer<
   typeof codingActivityManualSchema
 >;
@@ -419,6 +657,30 @@ export type GoalsProgressResponse = z.infer<
 export type HeatmapResponse = z.infer<typeof heatmapResponseSchema>;
 export type CodingStreaksResponse = z.infer<
   typeof codingStreaksResponseSchema
+>;
+export type ChromeBulkSessionsInput = z.infer<typeof chromeBulkSessionsSchema>;
+export type ChromeSyncRun = z.infer<typeof chromeSyncRunSchema>;
+export type ChromeBulkIngestResponse = z.infer<
+  typeof chromeBulkIngestResponseSchema
+>;
+export type ChromePrivacyRule = z.infer<typeof chromePrivacyRuleSchema>;
+export type ChromeHealthResponse = z.infer<typeof chromeHealthResponseSchema>;
+export type ChromeOverviewResponse = z.infer<typeof chromeOverviewResponseSchema>;
+export type ChromeSessionRecord = z.infer<typeof chromeSessionRecordSchema>;
+export type ChromeSessionsResponse = z.infer<typeof chromeSessionsResponseSchema>;
+export type ChromeTimelineResponse = z.infer<typeof chromeTimelineResponseSchema>;
+export type ChromeHostsResponse = z.infer<typeof chromeHostsResponseSchema>;
+export type ChromeCategoriesResponse = z.infer<
+  typeof chromeCategoriesResponseSchema
+>;
+export type ChromeContextSwitchingResponse = z.infer<
+  typeof chromeContextSwitchingResponseSchema
+>;
+export type ChromeCanvasCourseReport = z.infer<
+  typeof chromeCanvasCourseReportSchema
+>;
+export type ChromeSyncStatusResponse = z.infer<
+  typeof chromeSyncStatusResponseSchema
 >;
 export type ErrorEnvelope = z.infer<typeof errorEnvelopeSchema>;
 

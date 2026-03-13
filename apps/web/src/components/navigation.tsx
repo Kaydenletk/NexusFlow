@@ -1,32 +1,43 @@
-import Link from "next/link";
-import clsx from "clsx";
+"use client";
+
 import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import clsx from "clsx";
 
 const links = [
-  { href: "/", label: "Overview" },
+  { href: "/", label: "Dashboard" },
   { href: "/focus", label: "Focus" },
-  { href: "/coding", label: "Coding" },
-  { href: "/listening", label: "Listening" },
-  { href: "/health", label: "Health" },
-  { href: "/integrations", label: "Integrations" },
-  { href: "/goals", label: "Goals" },
-  { href: "/imports", label: "Imports" },
+  { href: "/focus/canvas", label: "Canvas" },
+  { href: "/chrome", label: "Chrome" },
 ];
 
 export function Navigation() {
+  const pathname = usePathname();
+
   return (
-    <nav className="flex flex-wrap items-center gap-3">
-      {links.map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          className={clsx(
-            "rounded-full border border-white/70 bg-white/80 px-4 py-2 text-sm font-semibold text-ink shadow-sm transition hover:-translate-y-0.5 hover:border-aurora/30 hover:text-aurora",
-          )}
-        >
-          {link.label}
-        </Link>
-      ))}
+    <nav className="flex flex-wrap items-center gap-2">
+      {links.map((link) => {
+        const isActive =
+          link.href === "/"
+            ? pathname === "/"
+            : pathname.startsWith(link.href);
+
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={clsx(
+              "rounded-full px-4 py-2 text-sm font-semibold transition",
+              isActive
+                ? "bg-slate-900 text-white shadow-sm"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+            )}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }

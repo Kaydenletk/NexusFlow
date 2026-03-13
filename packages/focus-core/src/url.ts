@@ -1,4 +1,4 @@
-import type { FocusCategory, FocusIntent, NormalizedUrl } from "./schema.js";
+import type { FocusCategory, FocusIntent, NormalizedUrl } from "./types.js";
 
 type CategorizationRule = {
   category: FocusCategory;
@@ -176,5 +176,72 @@ export function categorizeUrl(
     hostname: normalized.hostname,
     category: "uncategorized",
     intent: "neutral",
+  };
+}
+
+export function isCanvasHostname(hostname: string) {
+  return /(^|\.)instructure\.com$/i.test(hostname);
+}
+
+export function extractCanvasCourseId(path: string) {
+  const match = path.match(/^\/courses\/([^/]+)(?:\/|$)/i);
+
+  return match?.[1] ?? null;
+}
+
+const fullPathAllowedHosts = [
+  /(^|\.)github\.com$/i,
+  /(^|\.)gitlab\.com$/i,
+  /(^|\.)bitbucket\.org$/i,
+  /(^|\.)developer\.mozilla\.org$/i,
+  /(^|\.)docs\.github\.com$/i,
+  /(^|\.)react\.dev$/i,
+  /(^|\.)nextjs\.org$/i,
+  /(^|\.)tailwindcss\.com$/i,
+  /(^|\.)typescriptlang\.org$/i,
+  /(^|\.)canvas\.instructure\.com$/i,
+  /(^|\.)instructure\.com$/i,
+];
+
+const alwaysMaskedHosts = [
+  /(^|\.)mail\.google\.com$/i,
+  /(^|\.)accounts\.google\.com$/i,
+  /(^|\.)drive\.google\.com$/i,
+  /(^|\.)docs\.google\.com$/i,
+  /(^|\.)calendar\.google\.com$/i,
+  /(^|\.)outlook\.office\.com$/i,
+  /(^|\.)bank/i,
+  /(^|\.)paypal\.com$/i,
+  /^localhost$/i,
+  /^127\.0\.0\.1$/,
+];
+
+function shouldAllowFullPath(hostname: string, category: FocusCategory) {
+  if (alwaysMaskedHosts.some((pattern) => pattern.test(hostname))) {
+    return false;
+  }
+
+  if (fullPathAllowedHosts.some((pattern) => pattern.test(hostname))) {
+    return true;
+  }
+
+  return category === "coding" || category === "docs" || category === "learning";
+}
+
+export function applyPrivacyPolicy(
+  normalized: NormalizedUrl,
+  category: FocusCategory,
+) {
+  if (shouldAllowFullPath(normalized.hostname, category)) {
+    return {
+      ...normalized,
+      isPathMasked: false,
+    };
+  }
+
+  return {
+    ...normalized,
+    path: "/__masked__",
+    isPathMasked: true,
   };
 }

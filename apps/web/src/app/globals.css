@@ -8,10 +8,7 @@
 
 body {
   min-height: 100vh;
-  background-image:
-    radial-gradient(circle at top left, rgba(212, 160, 23, 0.18), transparent 38%),
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.16), transparent 32%),
-    linear-gradient(180deg, #fcfbf7 0%, #f5f7fb 100%);
+  background: #f8fafc;
   color: #0f172a;
 }
 

@@ -181,6 +181,75 @@ export const goals = pgTable(
   (table) => [index("goals_dataset_metric_idx").on(table.dataset, table.metric)],
 );
 
+export const chromeSyncRuns = pgTable(
+  "chrome_sync_runs",
+  {
+    id: uuid("id").primaryKey(),
+    status: text("status").notNull(),
+    rowsReceived: integer("rows_received").notNull().default(0),
+    rowsInserted: integer("rows_inserted").notNull().default(0),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (table) => [index("chrome_sync_runs_created_at_idx").on(table.createdAt)],
+);
+
+export const chromePrivacyRules = pgTable(
+  "chrome_privacy_rules",
+  {
+    id: uuid("id").primaryKey(),
+    hostnamePattern: text("hostname_pattern").notNull(),
+    maskMode: text("mask_mode").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("chrome_privacy_rules_hostname_pattern_idx").on(
+      table.hostnamePattern,
+    ),
+  ],
+);
+
+export const chromeSessions = pgTable(
+  "chrome_sessions",
+  {
+    id: text("id").primaryKey(),
+    tabId: integer("tab_id"),
+    windowId: integer("window_id"),
+    origin: text("origin").notNull(),
+    path: text("path").notNull(),
+    hostname: text("hostname").notNull(),
+    documentTitle: text("document_title"),
+    category: text("category").notNull(),
+    intent: text("intent").notNull(),
+    eventReason: text("event_reason").notNull(),
+    isPathMasked: boolean("is_path_masked").notNull().default(false),
+    startTime: timestamp("start_time", { withTimezone: true }).notNull(),
+    endTime: timestamp("end_time", { withTimezone: true }).notNull(),
+    durationSeconds: integer("duration_seconds").notNull(),
+    source: text("source").notNull().default("chrome_extension"),
+    syncRunId: uuid("sync_run_id").references(() => chromeSyncRuns.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("chrome_sessions_start_time_idx").on(table.startTime),
+    index("chrome_sessions_hostname_idx").on(table.hostname),
+    index("chrome_sessions_category_idx").on(table.category),
+    index("chrome_sessions_intent_idx").on(table.intent),
+    index("chrome_sessions_sync_run_idx").on(table.syncRunId),
+  ],
+);
+
 export type ImportBatchRow = typeof importBatches.$inferSelect;
 export type CodingActivityRow = typeof codingActivity.$inferSelect;
 export type CodingActivityInsert = typeof codingActivity.$inferInsert;
@@ -194,3 +263,8 @@ export type SyncRunRow = typeof syncRuns.$inferSelect;
 export type SyncRunInsert = typeof syncRuns.$inferInsert;
 export type GoalRow = typeof goals.$inferSelect;
 export type GoalInsert = typeof goals.$inferInsert;
+export type ChromeSyncRunRow = typeof chromeSyncRuns.$inferSelect;
+export type ChromeSyncRunInsert = typeof chromeSyncRuns.$inferInsert;
+export type ChromePrivacyRuleRow = typeof chromePrivacyRules.$inferSelect;
+export type ChromeSessionRow = typeof chromeSessions.$inferSelect;
+export type ChromeSessionInsert = typeof chromeSessions.$inferInsert;

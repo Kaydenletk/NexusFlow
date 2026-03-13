@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@quantified-self/contracts": "workspace:*",
-    "@quantified-self/focus-core": "workspace:*",
+    "@nexusflow/focus-core": "workspace:*",
     "@tremor/react": "3.18.7",
     "clsx": "2.1.1",
     "dexie": "4.3.0",

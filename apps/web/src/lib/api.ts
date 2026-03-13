@@ -1,4 +1,13 @@
 import type {
+  ChromeCanvasCourseReport,
+  ChromeCategoriesResponse,
+  ChromeContextSwitchingResponse,
+  ChromeHealthResponse,
+  ChromeHostsResponse,
+  ChromeOverviewResponse,
+  ChromeSessionsResponse,
+  ChromeSyncStatusResponse,
+  ChromeTimelineResponse,
   CodingStreaksResponse,
   CodingActivitySeriesResponse,
   Goal,
@@ -96,4 +105,48 @@ export function fetchStreaks() {
 
 export function getClientApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+}
+
+export function fetchChromeHealth() {
+  return getJson<ChromeHealthResponse>("/api/chrome/health");
+}
+
+export function fetchChromeOverview(range: "1d" | "7d" | "30d") {
+  return getJson<ChromeOverviewResponse>(`/api/chrome/overview?range=${range}`);
+}
+
+export function fetchChromeSessions(range: "1d" | "7d" | "30d", limit = 100) {
+  return getJson<ChromeSessionsResponse>(
+    `/api/chrome/sessions?range=${range}&limit=${limit}`,
+  );
+}
+
+export function fetchChromeTimeline(date: string) {
+  return getJson<ChromeTimelineResponse>(
+    `/api/chrome/timeline?date=${encodeURIComponent(date)}`,
+  );
+}
+
+export function fetchChromeHosts(range: "1d" | "7d" | "30d") {
+  return getJson<ChromeHostsResponse>(`/api/chrome/hosts?range=${range}`);
+}
+
+export function fetchChromeCategories(range: "1d" | "7d" | "30d") {
+  return getJson<ChromeCategoriesResponse>(`/api/chrome/categories?range=${range}`);
+}
+
+export function fetchChromeContextSwitching(range: "1d" | "7d" | "30d") {
+  return getJson<ChromeContextSwitchingResponse>(
+    `/api/chrome/context-switching?range=${range}`,
+  );
+}
+
+export function fetchChromeCanvasReport(range: "1d" | "7d" | "30d") {
+  return getJson<ChromeCanvasCourseReport>(
+    `/api/chrome/canvas-report?range=${range}`,
+  );
+}
+
+export function fetchChromeSyncStatus() {
+  return getJson<ChromeSyncStatusResponse>("/api/chrome/sync-runs");
 }
